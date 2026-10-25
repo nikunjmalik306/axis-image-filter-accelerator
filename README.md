@@ -64,8 +64,9 @@ Engineered for mobile multimedia, camera ISP sub-systems, and computer vision ha
    - **Mode 1 (`2'b01`)**: Sobel Horizontal Gradient ($|G_x|$)
    - **Mode 2 (`2'b10`)**: Sobel Vertical Gradient ($|G_y|$)
    - **Mode 3 (`2'b11`)**: $3 \times 3$ Gaussian Blur Filter (Weight sum $= 16$, normalized via $\gg 4$)
-4. **Frame Truncation & Resynchronization Recovery**:
-   - Line buffer monitors `s_axis_tuser` to reset pointer state and flush malformed lines if upstream transmission is interrupted.
+4. **Comprehensive Malformed-Frame Recovery**:
+   - Hardware-pipelined `sof_out` and `eol_out` tracking across line buffers and compute pipelines.
+   - Verified against **premature EOL truncations** (`s_axis_tlast` asserted early), **unexpected mid-stream SOF aborts** (`s_axis_tuser` asserted mid-frame), and **active-stream asynchronous resets** with zero hang and 100% bit-exact subsequent frame recovery.
 5. **Dynamic Power Optimization**:
    - Integrated Clock Gating (ICG) cell automatically gates pipeline clock domains during stream bubbles and frame blanking periods.
 
@@ -117,24 +118,31 @@ Executed on macOS with **Icarus Verilog**, **Python 3**, and **GTKWave**:
 >>> [RUNNING TEST 4] Filter Mode 3: 3x3 Gaussian Blur (Sum >> 4)...
     [PASSED] Mode 3 Verified: 15876/15876 pixels matched, 126 EOL TLASTs verified.
 
->>> [RUNNING TEST 5] Framing Resync Recovery Test...
-    -> Injecting clean frame with SOF (s_axis_tuser=1) to verify line buffer resync...
-    [PASSED] Frame Recovery Verified: Line buffer cleanly resynchronized!
+>>> [RUNNING TEST 5A] Premature EOL Truncation & Raster Pointer Alignment...
+    [PASSED] Line buffer accepted truncated line and wrapped raster pointer cleanly.
+
+>>> [RUNNING TEST 5B] Unexpected Mid-Frame SOF Abort & Realignment...
+    -> Injecting clean Mode 0 frame with SOF (s_axis_tuser=1) to verify line buffer resync...
+    [PASSED] Frame Recovery Verified: 15,876/15,876 pixels bit-exact, 126 line boundaries intact!
+
+>>> [RUNNING TEST 5C] Active-Stream Asynchronous Reset & Cold-Start Recovery...
+    -> Streaming clean Mode 3 (Gaussian) frame post-reset...
+    [PASSED] Cold-Start Verified: 15,876/15,876 Gaussian pixels bit-exact post-reset!
 
 ================================================================
            ACCELERATOR VERIFICATION REGRESSION REPORT           
 ================================================================
  Total Filter Modes Tested:     4 (Sobel Mag, X, Y, Gaussian)    
- Total Complete Frames Tested:   5 (including recovery frame)    
- Total Output Pixels Checked:   79380
- Total Line Boundaries Checked: 630
+ Total Complete Frames Tested:   6 (including recovery frames)   
+ Total Output Pixels Checked:   95256
+ Total Line Boundaries Checked: 756
  Total Framing Violations:      0                                
  Total Protocol Violations:     0                                
  Total Data Mismatches:         0
 ================================================================
 
 ################################################################
-###       ALL 79,380 PIXELS AND 630 LINE BOUNDARIES PASSED!   ###
+###       ALL 95,256 PIXELS AND 756 LINE BOUNDARIES PASSED!   ###
 ###       AXI-Stream Video Protocol Compliance 100% Verified ###
 ################################################################
 ```

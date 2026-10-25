@@ -23,7 +23,9 @@ module line_buffer_2d #(
   
   // 3x3 packed output matrix (flattened for universal EDA tool compatibility)
   output logic [(9*PIXEL_WIDTH)-1:0]            window_out,
-  output logic                                  window_valid
+  output logic                                  window_valid,
+  output logic                                  sof_out,
+  output logic                                  eol_out
 );
 
   logic [PIXEL_WIDTH-1:0] line_buf_0 [0:IMG_WIDTH-1];
@@ -48,6 +50,8 @@ module line_buffer_2d #(
       col_idx      <= '0;
       row_idx      <= '0;
       window_valid <= 1'b0;
+      sof_out      <= 1'b0;
+      eol_out      <= 1'b0;
       for (int r = 0; r < 3; r++) begin
         for (int c = 0; c < 3; c++) begin
           win[r][c] <= '0;
@@ -96,8 +100,12 @@ module line_buffer_2d #(
       // Interior 3x3 region valid: must be within valid image boundaries
       if (cur_row >= 2 && cur_row < IMG_HEIGHT && cur_col >= 2 && cur_col < IMG_WIDTH) begin
         window_valid <= 1'b1;
+        sof_out      <= (cur_row == 2 && cur_col == 2);
+        eol_out      <= (s_axis_tlast || cur_col == IMG_WIDTH - 1);
       end else begin
         window_valid <= 1'b0;
+        sof_out      <= 1'b0;
+        eol_out      <= 1'b0;
       end
 
       // End-of-Line (EOL) boundary recovery via s_axis_tlast
@@ -110,6 +118,8 @@ module line_buffer_2d #(
       end
     end else if (shift_en && !pixel_in_valid) begin
       window_valid <= 1'b0;
+      sof_out      <= 1'b0;
+      eol_out      <= 1'b0;
     end
   end
 

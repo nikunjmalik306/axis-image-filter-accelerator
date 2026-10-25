@@ -17,9 +17,13 @@ module conv3x3_engine #(
   input  logic [1:0]                            mode,
   input  logic [(9*PIXEL_WIDTH)-1:0]            window_in,
   input  logic                                  valid_in,
+  input  logic                                  sof_in,
+  input  logic                                  eol_in,
 
   output logic [PIXEL_WIDTH-1:0]                pixel_out,
   output logic                                  valid_out,
+  output logic                                  sof_out,
+  output logic                                  eol_out,
   output logic                                  s1_valid_o,
   output logic                                  s2_valid_o
 );
@@ -76,13 +80,20 @@ module conv3x3_engine #(
     end
   endgenerate
 
+  logic s1_sof;
+  logic s1_eol;
+
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       s1_valid <= 1'b0;
       s1_mode  <= 2'b00;
+      s1_sof   <= 1'b0;
+      s1_eol   <= 1'b0;
     end else if (en) begin
       s1_valid <= valid_in;
       s1_mode  <= mode;
+      s1_sof   <= sof_in;
+      s1_eol   <= eol_in;
     end
   end
 
@@ -96,17 +107,23 @@ module conv3x3_engine #(
   logic signed [ACC_WIDTH-1:0] sum_gauss;
   logic                        s2_valid;
   logic [1:0]                  s2_mode;
+  logic                        s2_sof;
+  logic                        s2_eol;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       s2_valid  <= 1'b0;
       s2_mode   <= 2'b00;
+      s2_sof    <= 1'b0;
+      s2_eol    <= 1'b0;
       sum_gx    <= '0;
       sum_gy    <= '0;
       sum_gauss <= '0;
     end else if (en) begin
       s2_valid  <= s1_valid;
       s2_mode   <= s1_mode;
+      s2_sof    <= s1_sof;
+      s2_eol    <= s1_eol;
       sum_gx    <= gx_mult[0][0] + gx_mult[0][1] + gx_mult[0][2] +
                    gx_mult[1][0] + gx_mult[1][1] + gx_mult[1][2] +
                    gx_mult[2][0] + gx_mult[2][1] + gx_mult[2][2];
@@ -146,9 +163,13 @@ module conv3x3_engine #(
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       valid_out <= 1'b0;
+      sof_out   <= 1'b0;
+      eol_out   <= 1'b0;
       pixel_out <= '0;
     end else if (en) begin
       valid_out <= s2_valid;
+      sof_out   <= s2_sof;
+      eol_out   <= s2_eol;
       if (combined_val > 20'd255) begin
         pixel_out <= 8'd255;
       end else begin

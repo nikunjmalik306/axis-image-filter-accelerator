@@ -53,17 +53,34 @@ module axis_image_filter_top #(
   assign s_axis_tready = out_ready;
   assign in_handshake  = s_axis_tvalid && s_axis_tready;
 
-  // Tracking Output Framing Coordinates (AXI-Stream Video Convention)
-  logic [15:0] out_col;
+  // Output framing coordination signals
+  logic [PIXEL_WIDTH-1:0] conv_pixel_out;
+  logic                   conv_valid_out;
+  logic                   conv_s1_valid;
+  logic                   conv_s2_valid;
+  logic                   conv_sof_out;
+  logic                   conv_eol_out;
+  logic                   buf_sof_out;
+  logic                   buf_eol_out;
+
   logic [15:0] out_row;
+  wire is_eof_pixel = (out_row == (OUT_HEIGHT - 1)) && conv_eol_out;
 
-  logic is_first_pixel;
-  logic is_eol_pixel;
-  logic is_eof_pixel;
-
-  assign is_first_pixel = (out_col == 16'd0) && (out_row == 16'd0);
-  assign is_eol_pixel   = (out_col == (OUT_WIDTH - 1));
-  assign is_eof_pixel   = (out_col == (OUT_WIDTH - 1)) && (out_row == (OUT_HEIGHT - 1));
+  always_ff @(posedge aclk or negedge aresetn) begin
+    if (!aresetn) begin
+      out_row <= '0;
+    end else if (out_ready && conv_valid_out) begin
+      if (conv_sof_out) begin
+        out_row <= '0;
+      end else if (conv_eol_out) begin
+        if (out_row == OUT_HEIGHT - 1) begin
+          out_row <= '0;
+        end else begin
+          out_row <= out_row + 1'b1;
+        end
+      end
+    end
+  end
 
   // Track active frame processing:
   always_ff @(posedge aclk or negedge aresetn) begin
@@ -78,7 +95,7 @@ module axis_image_filter_top #(
 
   // Line Buffer & Window Generation (flattened 9-pixel vector for universal tool support)
   logic [(9*PIXEL_WIDTH)-1:0] kernel_window;
-  logic                             window_valid;
+  logic                       window_valid;
 
   line_buffer_2d #(
     .IMG_WIDTH   (IMG_WIDTH),
@@ -93,15 +110,12 @@ module axis_image_filter_top #(
     .s_axis_tuser   (s_axis_tuser),
     .s_axis_tlast   (s_axis_tlast),
     .window_out     (kernel_window),
-    .window_valid   (window_valid)
+    .window_valid   (window_valid),
+    .sof_out        (buf_sof_out),
+    .eol_out        (buf_eol_out)
   );
 
   // Convolution Compute Engine
-  logic [PIXEL_WIDTH-1:0] conv_pixel_out;
-  logic                   conv_valid_out;
-  logic                   conv_s1_valid;
-  logic                   conv_s2_valid;
-
   conv3x3_engine #(
     .PIXEL_WIDTH (PIXEL_WIDTH)
   ) u_conv_engine (
@@ -111,8 +125,12 @@ module axis_image_filter_top #(
     .mode       (filter_mode),
     .window_in  (kernel_window),
     .valid_in   (window_valid),
+    .sof_in     (buf_sof_out),
+    .eol_in     (buf_eol_out),
     .pixel_out  (conv_pixel_out),
     .valid_out  (conv_valid_out),
+    .sof_out    (conv_sof_out),
+    .eol_out    (conv_eol_out),
     .s1_valid_o (conv_s1_valid),
     .s2_valid_o (conv_s2_valid)
   );
@@ -134,31 +152,17 @@ module axis_image_filter_top #(
       m_axis_tvalid <= 1'b0;
       m_axis_tlast  <= 1'b0;
       m_axis_tuser  <= 1'b0;
-      out_col       <= '0;
-      out_row       <= '0;
     end else if (out_ready) begin
       m_axis_tdata  <= conv_pixel_out;
       m_axis_tvalid <= conv_valid_out;
 
       if (conv_valid_out) begin
-        // AXI-Stream Video Protocol Framing:
-        // TUSER asserted on Start-of-Frame (pixel (0,0))
-        m_axis_tuser <= is_first_pixel;
+        // Pipelined AXI-Stream Video Protocol Framing:
+        // TUSER asserted strictly on Start-of-Frame (pixel (0,0))
+        m_axis_tuser <= conv_sof_out;
 
-        // TLAST asserted on End-of-Line (each line's final pixel)
-        m_axis_tlast <= is_eol_pixel;
-
-        // Update output raster coordinates
-        if (is_eol_pixel) begin
-          out_col <= '0;
-          if (out_row == OUT_HEIGHT - 1) begin
-            out_row <= '0;
-          end else begin
-            out_row <= out_row + 1'b1;
-          end
-        end else begin
-          out_col <= out_col + 1'b1;
-        end
+        // TLAST asserted strictly on End-of-Line (each line's final pixel)
+        m_axis_tlast <= conv_eol_out;
       end else begin
         m_axis_tuser <= 1'b0;
         m_axis_tlast <= 1'b0;
