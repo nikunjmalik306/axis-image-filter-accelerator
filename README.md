@@ -76,9 +76,12 @@ Engineered for mobile multimedia, camera ISP sub-systems, and computer vision ha
 
 ```text
 axis-image-filter-accelerator/
+├── docs/
+│   ├── technical_audit.md          # Architectural audit, protocol rules & gate-level analysis
+│   └── portfolio_summary.md        # Qualcomm resume bullets, metrics & interview talking points
 ├── rtl/
 │   ├── image_filter_pkg.sv         # Kernel matrices, modes, and global constants
-│   ├── icg_cell.sv                 # Glitch-free latch-based clock gating cell
+│   ├── icg_cell.sv                 # Glitch-free latch-based clock gating cell (TSMC hook)
 │   ├── line_buffer_2d.sv           # Dual line buffer sliding window with SOF/EOL tracking
 │   ├── conv3x3_engine.sv           # 3-stage pipelined MAC reduction engine
 │   └── axis_image_filter_top.sv    # Top-level AXI-Stream wrapper with output stability slice
@@ -92,6 +95,13 @@ axis-image-filter-accelerator/
 └── sim/
     └── Makefile                    # Unified build & simulation Makefile
 ```
+
+---
+
+## Detailed Documentation
+
+- [Technical Audit & Architectural Specification](docs/technical_audit.md)
+- [Portfolio Summary & Qualcomm Interview Guide](docs/portfolio_summary.md)
 
 ---
 

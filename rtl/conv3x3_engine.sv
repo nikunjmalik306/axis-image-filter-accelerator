@@ -31,24 +31,24 @@ module conv3x3_engine #(
   localparam PROD_WIDTH = image_filter_pkg::PROD_WIDTH;
   localparam ACC_WIDTH  = image_filter_pkg::ACC_WIDTH;
 
-  // Kernel Coefficients
-  logic signed [7:0] sobel_x [0:2][0:2];
-  logic signed [7:0] sobel_y [0:2][0:2];
-  logic signed [7:0] gauss [0:2][0:2];
+  // Kernel Coefficients (Packed constant vectors for universal synthesis and zero simulation warnings)
+  localparam logic signed [71:0] SOBEL_X_COEFFS = {
+    -8'sd1,  8'sd0,  8'sd1,
+    -8'sd2,  8'sd0,  8'sd2,
+    -8'sd1,  8'sd0,  8'sd1
+  };
 
-  always_comb begin
-    sobel_x[0][0] = -8'sd1; sobel_x[0][1] =  8'sd0; sobel_x[0][2] =  8'sd1;
-    sobel_x[1][0] = -8'sd2; sobel_x[1][1] =  8'sd0; sobel_x[1][2] =  8'sd2;
-    sobel_x[2][0] = -8'sd1; sobel_x[2][1] =  8'sd0; sobel_x[2][2] =  8'sd1;
+  localparam logic signed [71:0] SOBEL_Y_COEFFS = {
+    -8'sd1, -8'sd2, -8'sd1,
+     8'sd0,  8'sd0,  8'sd0,
+     8'sd1,  8'sd2,  8'sd1
+  };
 
-    sobel_y[0][0] = -8'sd1; sobel_y[0][1] = -8'sd2; sobel_y[0][2] = -8'sd1;
-    sobel_y[1][0] =  8'sd0; sobel_y[1][1] =  8'sd0; sobel_y[1][2] =  8'sd0;
-    sobel_y[2][0] =  8'sd1; sobel_y[2][1] =  8'sd2; sobel_y[2][2] =  8'sd1;
-
-    gauss[0][0]   =  8'sd1; gauss[0][1]   =  8'sd2; gauss[0][2]   =  8'sd1;
-    gauss[1][0]   =  8'sd2; gauss[1][1]   =  8'sd4; gauss[1][2]   =  8'sd2;
-    gauss[2][0]   =  8'sd1; gauss[2][1]   =  8'sd2; gauss[2][2]   =  8'sd1;
-  end
+  localparam logic signed [71:0] GAUSS_COEFFS = {
+     8'sd1,  8'sd2,  8'sd1,
+     8'sd2,  8'sd4,  8'sd2,
+     8'sd1,  8'sd2,  8'sd1
+  };
 
   // --------------------------------------------------------------------------
   // Stage 1: Pipelined Multipliers (9 parallel products for Gx, 9 for Gy)
@@ -64,6 +64,9 @@ module conv3x3_engine #(
     for (gr = 0; gr < 3; gr++) begin : gen_mult_row
       for (gc = 0; gc < 3; gc++) begin : gen_mult_col
         wire [PIXEL_WIDTH-1:0] cur_px = window_in[(8 - (gr*3 + gc))*PIXEL_WIDTH +: PIXEL_WIDTH];
+        wire signed [7:0]      k_sx   = SOBEL_X_COEFFS[(8 - (gr*3 + gc))*8 +: 8];
+        wire signed [7:0]      k_sy   = SOBEL_Y_COEFFS[(8 - (gr*3 + gc))*8 +: 8];
+        wire signed [7:0]      k_ga   = GAUSS_COEFFS[(8 - (gr*3 + gc))*8 +: 8];
 
         always_ff @(posedge clk or negedge rst_n) begin
           if (!rst_n) begin
@@ -71,9 +74,9 @@ module conv3x3_engine #(
             gy_mult[gr][gc]    <= '0;
             gauss_mult[gr][gc] <= '0;
           end else if (en) begin
-            gx_mult[gr][gc]    <= $signed({1'b0, cur_px}) * sobel_x[gr][gc];
-            gy_mult[gr][gc]    <= $signed({1'b0, cur_px}) * sobel_y[gr][gc];
-            gauss_mult[gr][gc] <= $signed({1'b0, cur_px}) * gauss[gr][gc];
+            gx_mult[gr][gc]    <= $signed({1'b0, cur_px}) * k_sx;
+            gy_mult[gr][gc]    <= $signed({1'b0, cur_px}) * k_sy;
+            gauss_mult[gr][gc] <= $signed({1'b0, cur_px}) * k_ga;
           end
         end
       end
