@@ -21,8 +21,8 @@ module line_buffer_2d #(
   input  logic                                  s_axis_tuser,     // Start-of-Frame (SOF)
   input  logic                                  s_axis_tlast,     // End-of-Line (EOL)
   
-  // 3x3 packed output matrix
-  output logic [2:0][2:0][PIXEL_WIDTH-1:0]      window_out,
+  // 3x3 packed output matrix (flattened for universal EDA tool compatibility)
+  output logic [(9*PIXEL_WIDTH)-1:0]            window_out,
   output logic                                  window_valid
 );
 
@@ -40,7 +40,7 @@ module line_buffer_2d #(
   logic [31:0] col_idx;
   logic [31:0] row_idx;
 
-  logic [2:0][2:0][PIXEL_WIDTH-1:0] win;
+  logic [PIXEL_WIDTH-1:0] win [0:2][0:2];
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -48,7 +48,11 @@ module line_buffer_2d #(
       col_idx      <= '0;
       row_idx      <= '0;
       window_valid <= 1'b0;
-      win          <= '0;
+      for (int r = 0; r < 3; r++) begin
+        for (int c = 0; c < 3; c++) begin
+          win[r][c] <= '0;
+        end
+      end
     end else if (shift_en && pixel_in_valid) begin
       logic [$clog2(IMG_WIDTH)-1:0] cur_wr_ptr;
       logic [31:0] cur_col;
@@ -109,6 +113,8 @@ module line_buffer_2d #(
     end
   end
 
-  assign window_out = win;
+  assign window_out = {win[0][0], win[0][1], win[0][2],
+                       win[1][0], win[1][1], win[1][2],
+                       win[2][0], win[2][1], win[2][2]};
 
 endmodule

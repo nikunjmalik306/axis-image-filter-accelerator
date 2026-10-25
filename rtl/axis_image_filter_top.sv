@@ -78,8 +78,8 @@ module axis_image_filter_top #(
     end
   end
 
-  // Line Buffer & Window Generation
-  logic [2:0][2:0][PIXEL_WIDTH-1:0] kernel_window;
+  // Line Buffer & Window Generation (flattened 9-pixel vector for universal tool support)
+  logic [(9*PIXEL_WIDTH)-1:0] kernel_window;
   logic                             window_valid;
 
   line_buffer_2d #(

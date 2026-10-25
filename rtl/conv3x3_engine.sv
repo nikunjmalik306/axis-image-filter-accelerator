@@ -17,7 +17,7 @@ module conv3x3_engine #(
   input  logic                                  rst_n,
   input  logic                                  en,
   input  logic [1:0]                            mode,
-  input  logic [2:0][2:0][PIXEL_WIDTH-1:0]      window_in,
+  input  logic [(9*PIXEL_WIDTH)-1:0]            window_in,
   input  logic                                  valid_in,
 
   output logic [PIXEL_WIDTH-1:0]                pixel_out,
@@ -45,6 +45,12 @@ module conv3x3_engine #(
     gauss[2][0]   =  8'sd1; gauss[2][1]   =  8'sd2; gauss[2][2]   =  8'sd1;
   end
 
+  // Unpack window matrix from flattened input vector for synthesis portability
+  logic [PIXEL_WIDTH-1:0] win [0:2][0:2];
+  assign {win[0][0], win[0][1], win[0][2],
+          win[1][0], win[1][1], win[1][2],
+          win[2][0], win[2][1], win[2][2]} = window_in;
+
   // --------------------------------------------------------------------------
   // Stage 1: Pipelined Multipliers (9 parallel products for Gx, 9 for Gy)
   // --------------------------------------------------------------------------
@@ -64,9 +70,9 @@ module conv3x3_engine #(
             gy_mult[gr][gc]    <= '0;
             gauss_mult[gr][gc] <= '0;
           end else if (en) begin
-            gx_mult[gr][gc]    <= $signed({1'b0, window_in[gr][gc]}) * sobel_x[gr][gc];
-            gy_mult[gr][gc]    <= $signed({1'b0, window_in[gr][gc]}) * sobel_y[gr][gc];
-            gauss_mult[gr][gc] <= $signed({1'b0, window_in[gr][gc]}) * gauss[gr][gc];
+            gx_mult[gr][gc]    <= $signed({1'b0, win[gr][gc]}) * sobel_x[gr][gc];
+            gy_mult[gr][gc]    <= $signed({1'b0, win[gr][gc]}) * sobel_y[gr][gc];
+            gauss_mult[gr][gc] <= $signed({1'b0, win[gr][gc]}) * gauss[gr][gc];
           end
         end
       end
