@@ -8,8 +8,6 @@
 
 `timescale 1ns / 1ps
 
-import image_filter_pkg::*;
-
 module conv3x3_engine #(
   parameter int PIXEL_WIDTH = 8
 )(
@@ -25,6 +23,9 @@ module conv3x3_engine #(
   output logic                                  s1_valid_o,
   output logic                                  s2_valid_o
 );
+
+  localparam PROD_WIDTH = image_filter_pkg::PROD_WIDTH;
+  localparam ACC_WIDTH  = image_filter_pkg::ACC_WIDTH;
 
   // Kernel Coefficients
   logic signed [7:0] sobel_x [0:2][0:2];
@@ -45,12 +46,6 @@ module conv3x3_engine #(
     gauss[2][0]   =  8'sd1; gauss[2][1]   =  8'sd2; gauss[2][2]   =  8'sd1;
   end
 
-  // Unpack window matrix from flattened input vector for synthesis portability
-  logic [PIXEL_WIDTH-1:0] win [0:2][0:2];
-  assign {win[0][0], win[0][1], win[0][2],
-          win[1][0], win[1][1], win[1][2],
-          win[2][0], win[2][1], win[2][2]} = window_in;
-
   // --------------------------------------------------------------------------
   // Stage 1: Pipelined Multipliers (9 parallel products for Gx, 9 for Gy)
   // --------------------------------------------------------------------------
@@ -64,15 +59,17 @@ module conv3x3_engine #(
   generate
     for (gr = 0; gr < 3; gr++) begin : gen_mult_row
       for (gc = 0; gc < 3; gc++) begin : gen_mult_col
+        wire [PIXEL_WIDTH-1:0] cur_px = window_in[(8 - (gr*3 + gc))*PIXEL_WIDTH +: PIXEL_WIDTH];
+
         always_ff @(posedge clk or negedge rst_n) begin
           if (!rst_n) begin
             gx_mult[gr][gc]    <= '0;
             gy_mult[gr][gc]    <= '0;
             gauss_mult[gr][gc] <= '0;
           end else if (en) begin
-            gx_mult[gr][gc]    <= $signed({1'b0, win[gr][gc]}) * sobel_x[gr][gc];
-            gy_mult[gr][gc]    <= $signed({1'b0, win[gr][gc]}) * sobel_y[gr][gc];
-            gauss_mult[gr][gc] <= $signed({1'b0, win[gr][gc]}) * gauss[gr][gc];
+            gx_mult[gr][gc]    <= $signed({1'b0, cur_px}) * sobel_x[gr][gc];
+            gy_mult[gr][gc]    <= $signed({1'b0, cur_px}) * sobel_y[gr][gc];
+            gauss_mult[gr][gc] <= $signed({1'b0, cur_px}) * gauss[gr][gc];
           end
         end
       end

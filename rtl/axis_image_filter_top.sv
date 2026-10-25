@@ -13,8 +13,6 @@
 
 `timescale 1ns / 1ps
 
-import image_filter_pkg::*;
-
 module axis_image_filter_top #(
   parameter int IMG_WIDTH   = 128,
   parameter int IMG_HEIGHT  = 128,
