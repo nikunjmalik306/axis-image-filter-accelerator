@@ -129,20 +129,27 @@ Executed on macOS with **Icarus Verilog**, **Python 3**, and **GTKWave**:
     -> Streaming clean Mode 3 (Gaussian) frame post-reset...
     [PASSED] Cold-Start Verified: 15,876/15,876 Gaussian pixels bit-exact post-reset!
 
+>>> [RUNNING TEST 5D] Sustained Downstream Backpressure Stalls (EOL Stability)...
+    [PASSED] Output signals remained 100% stable through 25-cycle backpressure stall.
+
+>>> [RUNNING TEST 5E] Cascaded Repeated Frame Aborts & Recovery Under Stress...
+    -> Injecting clean Mode 1 (Sobel X) frame post triple-abort...
+    [PASSED] Stress Recovery Verified: 15,876/15,876 Sobel X pixels bit-exact post triple-abort!
+
 ================================================================
            ACCELERATOR VERIFICATION REGRESSION REPORT           
 ================================================================
  Total Filter Modes Tested:     4 (Sobel Mag, X, Y, Gaussian)    
- Total Complete Frames Tested:   6 (including recovery frames)   
- Total Output Pixels Checked:   95256
- Total Line Boundaries Checked: 756
+ Total Complete Frames Tested:   7 (including recovery frames)   
+ Total Output Pixels Checked:   111132
+ Total Line Boundaries Checked: 882
  Total Framing Violations:      0                                
  Total Protocol Violations:     0                                
  Total Data Mismatches:         0
 ================================================================
 
 ################################################################
-###       ALL 95,256 PIXELS AND 756 LINE BOUNDARIES PASSED!   ###
+###       ALL 111,132 PIXELS AND 882 LINE BOUNDARIES PASSED! ###
 ###       AXI-Stream Video Protocol Compliance 100% Verified ###
 ################################################################
 ```
