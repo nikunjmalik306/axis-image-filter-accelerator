@@ -3,6 +3,12 @@
 // Description: Top-Level 2D Image Convolution Accelerator with AMBA AXI4-Stream
 //              Slave/Master interfaces, Integrated Clock Gating, and Backpressure.
 // Standard: SystemVerilog IEEE 1800-2012 / 1800-2017
+// Protocol Compliance:
+//   - Input handshake gated strictly on s_axis_tvalid && s_axis_tready
+//   - Output stability slice holding m_axis_tdata, tlast, tuser during backpressure
+//   - AXI-Stream Video framing:
+//       m_axis_tuser asserted on Start-of-Frame (pixel (0,0))
+//       m_axis_tlast asserted on End-of-Line (each row at col == OUT_WIDTH - 1)
 // ==============================================================================
 
 `timescale 1ns / 1ps
@@ -34,6 +40,10 @@ module axis_image_filter_top #(
   output logic                    m_axis_tuser
 );
 
+  localparam int OUT_WIDTH           = IMG_WIDTH - 2;
+  localparam int OUT_HEIGHT          = IMG_HEIGHT - 2;
+  localparam int TOTAL_OUTPUT_PIXELS = OUT_WIDTH * OUT_HEIGHT;
+
   logic gated_aclk;
   logic pipe_active;
   logic in_handshake;
@@ -45,14 +55,21 @@ module axis_image_filter_top #(
   assign s_axis_tready = out_ready;
   assign in_handshake  = s_axis_tvalid && s_axis_tready;
 
+  // Tracking Output Framing Coordinates (AXI-Stream Video Convention)
+  logic [15:0] out_col;
+  logic [15:0] out_row;
+
+  wire is_first_pixel = (out_col == 0) && (out_row == 0);
+  wire is_eol_pixel   = (out_col == OUT_WIDTH - 1);
+  wire is_eof_pixel   = (out_col == OUT_WIDTH - 1) && (out_row == OUT_HEIGHT - 1);
+
   // Track active frame processing:
-  // Starts on first incoming pixel, clears when final output pixel (TLAST) is consumed
   always_ff @(posedge aclk or negedge aresetn) begin
     if (!aresetn) begin
       in_progress <= 1'b0;
     end else if (in_handshake) begin
       in_progress <= 1'b1;
-    end else if (m_axis_tlast && m_axis_tvalid && m_axis_tready) begin
+    end else if (out_ready && m_axis_tvalid && m_axis_tready && is_eof_pixel) begin
       in_progress <= 1'b0;
     end
   end
@@ -108,34 +125,37 @@ module axis_image_filter_top #(
     .clk_out   (gated_aclk)
   );
 
-  // Output Register Slice (Guarantees TDATA/TLAST/TUSER are held constant during backpressure)
-  logic [31:0] out_pixel_counter;
-  localparam int TOTAL_OUTPUT_PIXELS = (IMG_WIDTH - 2) * (IMG_HEIGHT - 2);
-
+  // Output Register Slice (Guarantees TDATA/TLAST/TUSER are held rock-stable during backpressure)
   always_ff @(posedge aclk or negedge aresetn) begin
     if (!aresetn) begin
-      m_axis_tdata      <= '0;
-      m_axis_tvalid     <= 1'b0;
-      m_axis_tlast      <= 1'b0;
-      m_axis_tuser      <= 1'b0;
-      out_pixel_counter <= '0;
+      m_axis_tdata  <= '0;
+      m_axis_tvalid <= 1'b0;
+      m_axis_tlast  <= 1'b0;
+      m_axis_tuser  <= 1'b0;
+      out_col       <= '0;
+      out_row       <= '0;
     end else if (out_ready) begin
       m_axis_tdata  <= conv_pixel_out;
       m_axis_tvalid <= conv_valid_out;
 
       if (conv_valid_out) begin
-        if (out_pixel_counter == 0) begin
-          m_axis_tuser <= 1'b1;
-        end else begin
-          m_axis_tuser <= 1'b0;
-        end
+        // AXI-Stream Video Protocol Framing:
+        // TUSER asserted on Start-of-Frame (pixel (0,0))
+        m_axis_tuser <= is_first_pixel;
 
-        if (out_pixel_counter == TOTAL_OUTPUT_PIXELS - 1) begin
-          m_axis_tlast      <= 1'b1;
-          out_pixel_counter <= '0;
+        // TLAST asserted on End-of-Line (each line's final pixel)
+        m_axis_tlast <= is_eol_pixel;
+
+        // Update output raster coordinates
+        if (is_eol_pixel) begin
+          out_col <= '0;
+          if (out_row == OUT_HEIGHT - 1) begin
+            out_row <= '0;
+          end else begin
+            out_row <= out_row + 1'b1;
+          end
         end else begin
-          m_axis_tlast      <= 1'b0;
-          out_pixel_counter <= out_pixel_counter + 1'b1;
+          out_col <= out_col + 1'b1;
         end
       end else begin
         m_axis_tuser <= 1'b0;

@@ -1,0 +1,31 @@
+name: CI Regression & Synthesis
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  regression:
+    name: Simulation & Synthesis CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Open-Source EDA Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog yosys python3 python3-numpy
+
+      - name: Execute Full 4-Mode Accelerator Regression
+        run: |
+          cd sim
+          make clean
+          make sim
+
+      - name: Run Gate-Level Yosys Synthesis
+        run: |
+          cd sim
+          make synth
