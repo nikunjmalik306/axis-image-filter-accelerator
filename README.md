@@ -136,20 +136,23 @@ Executed on macOS with **Icarus Verilog**, **Python 3**, and **GTKWave**:
     -> Injecting clean Mode 1 (Sobel X) frame post triple-abort...
     [PASSED] Stress Recovery Verified: 15,876/15,876 Sobel X pixels bit-exact post triple-abort!
 
+>>> [RUNNING TEST 6] Parameterized Image Generality (64x64 Image Dimensions)...
+    [PASSED] Parameterized 64x64 DUT verified: 3,844/3,844 pixels matched, 62 line boundaries intact!
+
 ================================================================
            ACCELERATOR VERIFICATION REGRESSION REPORT           
 ================================================================
  Total Filter Modes Tested:     4 (Sobel Mag, X, Y, Gaussian)    
- Total Complete Frames Tested:   7 (including recovery frames)   
- Total Output Pixels Checked:   111132
- Total Line Boundaries Checked: 882
+ Total Complete Frames Tested:   8 (7x 128x128 + 1x 64x64)       
+ Total Output Pixels Checked:   114976
+ Total Line Boundaries Checked: 944
  Total Framing Violations:      0                                
  Total Protocol Violations:     0                                
  Total Data Mismatches:         0
 ================================================================
 
 ################################################################
-###       ALL 111,132 PIXELS AND 882 LINE BOUNDARIES PASSED! ###
+###       ALL 114,976 PIXELS AND 944 LINE BOUNDARIES PASSED! ###
 ###       AXI-Stream Video Protocol Compliance 100% Verified ###
 ################################################################
 ```

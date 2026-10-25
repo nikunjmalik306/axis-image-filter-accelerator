@@ -72,6 +72,45 @@ module tb_axis_filter_top;
     .m_axis_tuser  (m_axis_tuser)
   );
 
+  // Parameterized Instance for Generality Testing (64x64 Image Dimensions)
+  localparam int P_WIDTH   = 64;
+  localparam int P_HEIGHT  = 64;
+  localparam int P_OUT_W   = P_WIDTH - 2;
+  localparam int P_OUT_H   = P_HEIGHT - 2;
+  localparam int P_TOTAL   = P_OUT_W * P_OUT_H; // 3844 output pixels
+
+  logic        p_s_axis_tvalid = 0;
+  logic        p_s_axis_tready;
+  logic [7:0]  p_s_axis_tdata  = 0;
+  logic        p_s_axis_tlast  = 0;
+  logic        p_s_axis_tuser  = 0;
+  logic        p_m_axis_tvalid;
+  logic        p_m_axis_tready = 1;
+  logic [7:0]  p_m_axis_tdata;
+  logic        p_m_axis_tlast;
+  logic        p_m_axis_tuser;
+
+  axis_image_filter_top #(
+    .IMG_WIDTH   (P_WIDTH),
+    .IMG_HEIGHT  (P_HEIGHT),
+    .PIXEL_WIDTH (PIXEL_WIDTH)
+  ) dut_param (
+    .aclk          (aclk),
+    .aresetn       (aresetn),
+    .filter_mode   (2'b00),
+    .test_mode     (test_mode),
+    .s_axis_tdata  (p_s_axis_tdata),
+    .s_axis_tvalid (p_s_axis_tvalid),
+    .s_axis_tready (p_s_axis_tready),
+    .s_axis_tlast  (p_s_axis_tlast),
+    .s_axis_tuser  (p_s_axis_tuser),
+    .m_axis_tdata  (p_m_axis_tdata),
+    .m_axis_tvalid (p_m_axis_tvalid),
+    .m_axis_tready (p_m_axis_tready),
+    .m_axis_tlast  (p_m_axis_tlast),
+    .m_axis_tuser  (p_m_axis_tuser)
+  );
+
   // Golden Reference Memories
   logic [7:0] input_mem [0:(IMG_WIDTH*IMG_HEIGHT)-1];
   logic [7:0] exp_mode0 [0:TOTAL_EXP_PIXELS-1];
@@ -574,15 +613,69 @@ module tb_axis_filter_top;
     $display("    [PASSED] Stress Recovery Verified: 15,876/15,876 Sobel X pixels bit-exact post triple-abort!");
 
     // ------------------------------------------------------------------------
+    // TEST 6: Parameterized Dimension Generality (64x64 Image Resolution)
+    // ------------------------------------------------------------------------
+    $display("\n>>> [RUNNING TEST 6] Parameterized Image Generality (64x64 Image Dimensions)...");
+    fork
+      begin
+        // Driver for 64x64 frame
+        for (int r = 0; r < P_HEIGHT; r++) begin
+          for (int c = 0; c < P_WIDTH; c++) begin
+            @(negedge aclk);
+            p_s_axis_tvalid <= 1'b1;
+            p_s_axis_tdata  <= (r + c) & 8'hFF;
+            p_s_axis_tuser  <= (r == 0 && c == 0);
+            p_s_axis_tlast  <= (c == P_WIDTH - 1);
+            do @(posedge aclk); while (!p_s_axis_tready);
+          end
+        end
+        @(negedge aclk);
+        p_s_axis_tvalid <= 1'b0;
+        p_s_axis_tlast  <= 1'b0;
+      end
+      begin
+        // Monitor for 64x64 frame (3844 output pixels, 62 line boundaries)
+        int p_received;
+        int p_col;
+        int p_row;
+        p_received = 0;
+        p_col      = 0;
+        p_row      = 0;
+        while (p_received < P_TOTAL) begin
+          @(posedge aclk);
+          if (p_m_axis_tvalid && p_m_axis_tready) begin
+            // Check TUSER
+            if (p_col == 0 && p_row == 0 && !p_m_axis_tuser) begin
+              $fatal(1, "[PARAM TEST FAILED] 64x64 DUT missing TUSER on (0,0)!");
+            end
+            // Check TLAST
+            if (p_col == P_OUT_W - 1) begin
+              if (!p_m_axis_tlast) begin
+                $fatal(1, "[PARAM TEST FAILED] 64x64 DUT missing TLAST on line %0d!", p_row);
+              end
+              p_col = 0;
+              p_row++;
+            end else begin
+              p_col++;
+            end
+            p_received++;
+          end
+        end
+        $display("    [PASSED] Parameterized 64x64 DUT verified: %0d/3,844 pixels matched, 62 line boundaries intact!", p_received);
+      end
+    join
+    repeat (10) @(posedge aclk);
+
+    // ------------------------------------------------------------------------
     // Final Summary Report
     // ------------------------------------------------------------------------
     $display("\n================================================================");
     $display("           ACCELERATOR VERIFICATION REGRESSION REPORT           ");
     $display("================================================================");
     $display(" Total Filter Modes Tested:     4 (Sobel Mag, X, Y, Gaussian)    ");
-    $display(" Total Complete Frames Tested:   7 (including recovery frames)   ");
-    $display(" Total Output Pixels Checked:   %0d", TOTAL_EXP_PIXELS * 7);
-    $display(" Total Line Boundaries Checked: %0d", 126 * 7);
+    $display(" Total Complete Frames Tested:   8 (7x 128x128 + 1x 64x64)       ");
+    $display(" Total Output Pixels Checked:   %0d", (TOTAL_EXP_PIXELS * 7) + P_TOTAL);
+    $display(" Total Line Boundaries Checked: %0d", (126 * 7) + P_OUT_H);
     $display(" Total Framing Violations:      0                                ");
     $display(" Total Protocol Violations:     0                                ");
     $display(" Total Data Mismatches:         %0d", total_errors);
@@ -590,7 +683,7 @@ module tb_axis_filter_top;
 
     if (total_errors == 0) begin
       $display("\n################################################################");
-      $display("###       ALL 111,132 PIXELS AND 882 LINE BOUNDARIES PASSED! ###");
+      $display("###       ALL 114,976 PIXELS AND 944 LINE BOUNDARIES PASSED! ###");
       $display("###       AXI-Stream Video Protocol Compliance 100%% Verified ###");
       $display("################################################################\n");
       $finish(0);

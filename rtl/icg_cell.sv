@@ -14,9 +14,20 @@ module icg_cell (
   output logic clk_out
 );
 
+`ifdef ASIC_FOUNDRY_ICG
+  // Direct TSMC / GF standard-cell foundry ICG cell (e.g. CKLNQD1)
+  // Ensures Clock Tree Synthesis (CTS) treats this as an atomic clock gate
+  CKLNQD1 u_foundry_icg (
+    .CK (clk_in),
+    .E  (enable),
+    .TE (test_mode),
+    .Q  (clk_out)
+  );
+`else
+  // Architectural behavioral model:
+  // Latch enable on clock LOW phase to guarantee glitch-free operation when clk_in rises
   logic latch_en;
 
-  // Latch the enable signal when clock is LOW to prevent glitches when clk_in rises
   always_latch begin
     if (!clk_in) begin
       latch_en <= enable | test_mode;
@@ -24,5 +35,6 @@ module icg_cell (
   end
 
   assign clk_out = clk_in & latch_en;
+`endif
 
 endmodule
