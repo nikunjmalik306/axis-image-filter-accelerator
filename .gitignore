@@ -1,0 +1,6 @@
+*.vvp
+*.vcd
+*.hex
+*.log
+axis_image_filter_synth.v
+.DS_Store
