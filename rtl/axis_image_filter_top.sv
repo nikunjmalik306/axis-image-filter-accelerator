@@ -40,9 +40,9 @@ module axis_image_filter_top #(
   output logic                    m_axis_tuser
 );
 
-  localparam int OUT_WIDTH           = IMG_WIDTH - 2;
-  localparam int OUT_HEIGHT          = IMG_HEIGHT - 2;
-  localparam int TOTAL_OUTPUT_PIXELS = OUT_WIDTH * OUT_HEIGHT;
+  localparam OUT_WIDTH           = IMG_WIDTH - 2;
+  localparam OUT_HEIGHT          = IMG_HEIGHT - 2;
+  localparam TOTAL_OUTPUT_PIXELS = OUT_WIDTH * OUT_HEIGHT;
 
   logic gated_aclk;
   logic pipe_active;
@@ -59,9 +59,13 @@ module axis_image_filter_top #(
   logic [15:0] out_col;
   logic [15:0] out_row;
 
-  wire is_first_pixel = (out_col == 0) && (out_row == 0);
-  wire is_eol_pixel   = (out_col == OUT_WIDTH - 1);
-  wire is_eof_pixel   = (out_col == OUT_WIDTH - 1) && (out_row == OUT_HEIGHT - 1);
+  logic is_first_pixel;
+  logic is_eol_pixel;
+  logic is_eof_pixel;
+
+  assign is_first_pixel = (out_col == 16'd0) && (out_row == 16'd0);
+  assign is_eol_pixel   = (out_col == (OUT_WIDTH - 1));
+  assign is_eof_pixel   = (out_col == (OUT_WIDTH - 1)) && (out_row == (OUT_HEIGHT - 1));
 
   // Track active frame processing:
   always_ff @(posedge aclk or negedge aresetn) begin

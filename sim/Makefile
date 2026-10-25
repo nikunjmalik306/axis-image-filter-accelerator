@@ -53,7 +53,7 @@ wave:
 
 synth:
 	@echo "==> Synthesizing RTL with Yosys..."
-	cd $(SYN_DIR) && $(YOSYS) -s synth.ys > yosys_synth.log 2>&1
+	cd $(SYN_DIR) && ($(YOSYS) -s synth.ys > yosys_synth.log 2>&1 || (cat yosys_synth.log && exit 1))
 	@echo "==> Yosys Synthesis complete. Log saved to syn/yosys_synth.log"
 	@grep -A 30 "=== axis_image_filter_top ===" $(SYN_DIR)/yosys_synth.log || tail -n 35 $(SYN_DIR)/yosys_synth.log
 
