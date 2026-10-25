@@ -1,7 +1,8 @@
 // ==============================================================================
 // File: line_buffer_2d.sv
-// Description: Parameterized 2D Line Buffer providing continuous 3x3 sliding
-//              pixel windows from a 1D raster-scan pixel stream without stalls.
+// Description: Parameterized 2D Line Buffer with AXI4-Stream Framing Recovery.
+//              Uses s_axis_tuser (SOF) and s_axis_tlast (EOL) to resynchronize
+//              pointers and state across truncated, malformed, or backpressured frames.
 // Standard: SystemVerilog IEEE 1800-2012 / 1800-2017
 // ==============================================================================
 
@@ -14,9 +15,11 @@ module line_buffer_2d #(
 )(
   input  logic                                  clk,
   input  logic                                  rst_n,
-  input  logic                                  shift_en,
+  input  logic                                  shift_en,         // Handshake: s_axis_tvalid && s_axis_tready
   input  logic [PIXEL_WIDTH-1:0]                pixel_in,
   input  logic                                  pixel_in_valid,
+  input  logic                                  s_axis_tuser,     // Start-of-Frame (SOF)
+  input  logic                                  s_axis_tlast,     // End-of-Line (EOL)
   
   // 3x3 packed output matrix
   output logic [2:0][2:0][PIXEL_WIDTH-1:0]      window_out,
@@ -47,38 +50,59 @@ module line_buffer_2d #(
       window_valid <= 1'b0;
       win          <= '0;
     end else if (shift_en && pixel_in_valid) begin
-      line_buf_0[wr_ptr] <= line_buf_1[wr_ptr];
-      line_buf_1[wr_ptr] <= pixel_in;
+      logic [$clog2(IMG_WIDTH)-1:0] cur_wr_ptr;
+      logic [31:0] cur_col;
+      logic [31:0] cur_row;
 
-      if (wr_ptr == IMG_WIDTH - 1) begin
-        wr_ptr <= '0;
+      // Start of Frame Resynchronization:
+      if (s_axis_tuser) begin
+        cur_wr_ptr = '0;
+        cur_col    = '0;
+        cur_row    = '0;
       end else begin
-        wr_ptr <= wr_ptr + 1'b1;
+        cur_wr_ptr = wr_ptr;
+        cur_col    = col_idx;
+        cur_row    = row_idx;
       end
 
+      // Update line buffer memory
+      line_buf_0[cur_wr_ptr] <= line_buf_1[cur_wr_ptr];
+      line_buf_1[cur_wr_ptr] <= pixel_in;
+
+      // Pointer ring buffer
+      if (cur_wr_ptr == IMG_WIDTH - 1) begin
+        wr_ptr <= '0;
+      end else begin
+        wr_ptr <= cur_wr_ptr + 1'b1;
+      end
+
+      // Shift 3x3 window registers
       win[0][0] <= win[0][1];
       win[0][1] <= win[0][2];
-      win[0][2] <= line_buf_0[wr_ptr];
+      win[0][2] <= line_buf_0[cur_wr_ptr];
 
       win[1][0] <= win[1][1];
       win[1][1] <= win[1][2];
-      win[1][2] <= line_buf_1[wr_ptr];
+      win[1][2] <= line_buf_1[cur_wr_ptr];
 
       win[2][0] <= win[2][1];
       win[2][1] <= win[2][2];
       win[2][2] <= pixel_in;
 
-      if (row_idx >= 2 && col_idx >= 2) begin
+      // Interior 3x3 region valid: must be within valid image boundaries
+      if (cur_row >= 2 && cur_row < IMG_HEIGHT && cur_col >= 2 && cur_col < IMG_WIDTH) begin
         window_valid <= 1'b1;
       end else begin
         window_valid <= 1'b0;
       end
 
-      if (col_idx == IMG_WIDTH - 1) begin
+      // End-of-Line (EOL) boundary recovery via s_axis_tlast
+      if (s_axis_tlast || cur_col == IMG_WIDTH - 1) begin
         col_idx <= '0;
-        row_idx <= row_idx + 1'b1;
+        row_idx <= cur_row + 1'b1;
       end else begin
-        col_idx <= col_idx + 1'b1;
+        col_idx <= cur_col + 1'b1;
+        row_idx <= cur_row;
       end
     end else if (shift_en && !pixel_in_valid) begin
       window_valid <= 1'b0;

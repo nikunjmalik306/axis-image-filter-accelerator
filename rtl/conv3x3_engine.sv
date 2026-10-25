@@ -21,9 +21,12 @@ module conv3x3_engine #(
   input  logic                                  valid_in,
 
   output logic [PIXEL_WIDTH-1:0]                pixel_out,
-  output logic                                  valid_out
+  output logic                                  valid_out,
+  output logic                                  s1_valid_o,
+  output logic                                  s2_valid_o
 );
 
+  // Kernel Coefficients
   logic signed [7:0] sobel_x [0:2][0:2];
   logic signed [7:0] sobel_y [0:2][0:2];
   logic signed [7:0] gauss [0:2][0:2];
@@ -51,29 +54,36 @@ module conv3x3_engine #(
   logic                         s1_valid;
   logic [1:0]                   s1_mode;
 
+  genvar gr, gc;
+  generate
+    for (gr = 0; gr < 3; gr++) begin : gen_mult_row
+      for (gc = 0; gc < 3; gc++) begin : gen_mult_col
+        always_ff @(posedge clk or negedge rst_n) begin
+          if (!rst_n) begin
+            gx_mult[gr][gc]    <= '0;
+            gy_mult[gr][gc]    <= '0;
+            gauss_mult[gr][gc] <= '0;
+          end else if (en) begin
+            gx_mult[gr][gc]    <= $signed({1'b0, window_in[gr][gc]}) * sobel_x[gr][gc];
+            gy_mult[gr][gc]    <= $signed({1'b0, window_in[gr][gc]}) * sobel_y[gr][gc];
+            gauss_mult[gr][gc] <= $signed({1'b0, window_in[gr][gc]}) * gauss[gr][gc];
+          end
+        end
+      end
+    end
+  endgenerate
+
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       s1_valid <= 1'b0;
       s1_mode  <= 2'b00;
-      for (int r = 0; r < 3; r++) begin
-        for (int c = 0; c < 3; c++) begin
-          gx_mult[r][c]    <= '0;
-          gy_mult[r][c]    <= '0;
-          gauss_mult[r][c] <= '0;
-        end
-      end
     end else if (en) begin
       s1_valid <= valid_in;
       s1_mode  <= mode;
-      for (int r = 0; r < 3; r++) begin
-        for (int c = 0; c < 3; c++) begin
-          gx_mult[r][c]    <= $signed({1'b0, window_in[r][c]}) * sobel_x[r][c];
-          gy_mult[r][c]    <= $signed({1'b0, window_in[r][c]}) * sobel_y[r][c];
-          gauss_mult[r][c] <= $signed({1'b0, window_in[r][c]}) * gauss[r][c];
-        end
-      end
     end
   end
+
+  assign s1_valid_o = s1_valid;
 
   // --------------------------------------------------------------------------
   // Stage 2: Adder Tree
@@ -107,6 +117,8 @@ module conv3x3_engine #(
                    gauss_mult[2][0] + gauss_mult[2][1] + gauss_mult[2][2];
     end
   end
+
+  assign s2_valid_o = s2_valid;
 
   // --------------------------------------------------------------------------
   // Stage 3: Magnitude, Normalization & Saturation

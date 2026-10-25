@@ -34,32 +34,28 @@ module axis_image_filter_top #(
   output logic                    m_axis_tuser
 );
 
-  logic pipeline_en;
   logic gated_aclk;
   logic pipe_active;
-  logic [3:0] drain_cnt;
+  logic in_handshake;
+  logic out_ready;
+  logic in_progress;
 
-  assign pipeline_en = m_axis_tready | ~m_axis_tvalid;
-  assign s_axis_tready = pipeline_en;
+  // AXI4-Stream Backpressure Handshake:
+  assign out_ready     = m_axis_tready | ~m_axis_tvalid;
+  assign s_axis_tready = out_ready;
+  assign in_handshake  = s_axis_tvalid && s_axis_tready;
 
+  // Track active frame processing:
+  // Starts on first incoming pixel, clears when final output pixel (TLAST) is consumed
   always_ff @(posedge aclk or negedge aresetn) begin
     if (!aresetn) begin
-      drain_cnt <= '0;
-    end else if (s_axis_tvalid) begin
-      drain_cnt <= 4'd8;
-    end else if (drain_cnt > 0) begin
-      drain_cnt <= drain_cnt - 1'b1;
+      in_progress <= 1'b0;
+    end else if (in_handshake) begin
+      in_progress <= 1'b1;
+    end else if (m_axis_tlast && m_axis_tvalid && m_axis_tready) begin
+      in_progress <= 1'b0;
     end
   end
-
-  assign pipe_active = s_axis_tvalid | m_axis_tvalid | (drain_cnt > 0);
-
-  icg_cell u_icg (
-    .clk_in    (aclk),
-    .enable    (pipe_active),
-    .test_mode (test_mode),
-    .clk_out   (gated_aclk)
-  );
 
   // Line Buffer & Window Generation
   logic [2:0][2:0][PIXEL_WIDTH-1:0] kernel_window;
@@ -72,9 +68,11 @@ module axis_image_filter_top #(
   ) u_line_buffer (
     .clk            (gated_aclk),
     .rst_n          (aresetn),
-    .shift_en       (pipeline_en),
+    .shift_en       (out_ready),
     .pixel_in       (s_axis_tdata),
-    .pixel_in_valid (s_axis_tvalid),
+    .pixel_in_valid (in_handshake),
+    .s_axis_tuser   (s_axis_tuser),
+    .s_axis_tlast   (s_axis_tlast),
     .window_out     (kernel_window),
     .window_valid   (window_valid)
   );
@@ -82,21 +80,35 @@ module axis_image_filter_top #(
   // Convolution Compute Engine
   logic [PIXEL_WIDTH-1:0] conv_pixel_out;
   logic                   conv_valid_out;
+  logic                   conv_s1_valid;
+  logic                   conv_s2_valid;
 
   conv3x3_engine #(
     .PIXEL_WIDTH (PIXEL_WIDTH)
   ) u_conv_engine (
     .clk        (gated_aclk),
     .rst_n      (aresetn),
-    .en         (pipeline_en),
+    .en         (out_ready),
     .mode       (filter_mode),
     .window_in  (kernel_window),
     .valid_in   (window_valid),
     .pixel_out  (conv_pixel_out),
-    .valid_out  (conv_valid_out)
+    .valid_out  (conv_valid_out),
+    .s1_valid_o (conv_s1_valid),
+    .s2_valid_o (conv_s2_valid)
   );
 
-  // Output Register Slice
+  // Dynamic Clock Gating: active whenever pixels are streaming, in flight, or frame in progress
+  assign pipe_active = s_axis_tvalid | m_axis_tvalid | in_progress | conv_s1_valid | conv_s2_valid | conv_valid_out;
+
+  icg_cell u_icg (
+    .clk_in    (aclk),
+    .enable    (pipe_active),
+    .test_mode (test_mode),
+    .clk_out   (gated_aclk)
+  );
+
+  // Output Register Slice (Guarantees TDATA/TLAST/TUSER are held constant during backpressure)
   logic [31:0] out_pixel_counter;
   localparam int TOTAL_OUTPUT_PIXELS = (IMG_WIDTH - 2) * (IMG_HEIGHT - 2);
 
@@ -107,7 +119,7 @@ module axis_image_filter_top #(
       m_axis_tlast      <= 1'b0;
       m_axis_tuser      <= 1'b0;
       out_pixel_counter <= '0;
-    end else if (pipeline_en) begin
+    end else if (out_ready) begin
       m_axis_tdata  <= conv_pixel_out;
       m_axis_tvalid <= conv_valid_out;
 
